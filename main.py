@@ -90,7 +90,7 @@ def process_transfers(result: list, wallet):
         wallet_hash = wallet['hash']
         wallet_name = wallet['name']
         print(f"Processing transfers for wallet {wallet_name}...")
-        send_message_to_discord(f"Processing transfers for wallet {wallet_name}...")
+        # send_message_to_discord(f"Processing transfers for wallet {wallet_name}...")
 
         message = ""
 
@@ -106,11 +106,13 @@ def process_transfers(result: list, wallet):
                     name, symbol = get_name_symbol(token)
                     if not name or not symbol:
                         continue
-                    message += f"Transaction: {txnHash} - {name} - {symbol}"           
+                    message += f"**Transaction: **`{txnHash}` - `{name}` - `{symbol}`\n"           
 
         if not message:
             print("No new transactions found")
-            send_message_to_discord(f"No new transactions found for wallet [{wallet_name}](https://solscan.io/account/{wallet_hash})")
+            return
+            # send_message_to_discord(f"No new transactions found for wallet [{wallet_name}](https://solscan.io/account/{wallet_hash})")
+        message = f"New transactions found for wallet [{wallet_name}](https://solscan.io/account/{wallet_hash}):\n" + message
         send_message_to_discord(message)
 
     except Exception as e:
@@ -160,7 +162,7 @@ async def my_coroutine():
 async def schedule_coroutine():
     try:
         while True:
-            send_message_to_discord("Processing new one")
+            # send_message_to_discord("Processing new one")
             await my_coroutine()
             await asyncio.sleep(60)
     except Exception as e:
