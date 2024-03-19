@@ -10,44 +10,16 @@ from discord.ext import commands
 import requests
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
 webhook_url = os.getenv("WEBHOOK_URL")
 MORALIS_API = os.getenv("MORALIS_API")
 MONGO_SESSION = os.getenv("MONGO_SESSION")
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 # MongoDB setup
 mongo_client = pymongo.MongoClient(MONGO_SESSION)
 db = mongo_client["tokenchange_alerts"]
 wallets_collection = db["wallets"]
-
-# Discord bot setup
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix='/', intents=intents)
-
-@bot.event
-async def on_ready():
-    print(f'{bot.user} has connected to Discord!')
-    # Schedule the coroutine here
-    asyncio.create_task(schedule_coroutine())
-
-# Discord command to add a new wallet
-@bot.command()
-async def add(ctx, hash: str, name: str):
-    if not hash or not name:
-        await ctx.send("Invalid parameters")
-        return
-    wallet = {"hash": hash, "name": name}
-    wallets_collection.insert_one(wallet)
-    await ctx.send(f"Added wallet {name} ({hash})")
-
-# Discord command to remove a wallet
-@bot.command()
-async def remove(ctx, hash: str):
-    wallets_collection.delete_one({"hash": hash})
-    await ctx.send(f"Removed wallet with hash {hash}")
 
 # Function to send messages to Discord
 def send_message_to_discord(message):
@@ -136,14 +108,12 @@ def process_transfers(result: list, wallet):
                     name, symbol = get_name_symbol(token)
                     if not name or not symbol:
                         continue
-                    message = f"Transaction: {txnHash} - {name} - {symbol}"
-                    send_message_to_discord(message)           
+                    message += f"Transaction: {txnHash} - {name} - {symbol}"           
 
         if not message:
             print("No new transactions found")
             send_message_to_discord(f"No new transactions found for wallet [{wallet_name}](https://solscan.io/account/{wallet_hash})")
-        # send_message_to_discord(message)
-        
+        send_message_to_discord(message)
 
     except Exception as e:
         print(f"Error on process txns: {e}")
@@ -182,14 +152,24 @@ async def my_coroutine():
             continue  # Proceed to the next wallet hash
 
         process_transfers(results, wallet)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.2)
 
-# Adjusted to directly start the bot and incorporate the scheduling within its loop
+# Coroutine to schedule the execution
 async def schedule_coroutine():
-    await bot.wait_until_ready()
-    while not bot.is_closed():
-        send_message_to_discord("Processing new one")
-        await my_coroutine()
-        await asyncio.sleep(60)
+    try:
+        while True:
+            send_message_to_discord("Processing new one")
+            await my_coroutine()
+            await asyncio.sleep(60)
+    except Exception as e:
+        print(f"Error: {e}")
+        send_exception_to_discord(e)
 
-bot.run(DISCORD_BOT_TOKEN)
+# Running the event loop
+loop = asyncio.get_event_loop()
+try:
+    loop.run_until_complete(schedule_coroutine())
+except KeyboardInterrupt:
+    pass
+finally:
+    loop.close()
