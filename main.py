@@ -5,8 +5,6 @@ import asyncio
 from traceback import format_exception
 import json
 import pymongo
-import discord
-from discord.ext import commands
 import requests
 from dotenv import load_dotenv
 
@@ -120,25 +118,29 @@ def process_transfers(result: list, wallet):
         send_exception_to_discord(e)
 
 def get_name_symbol(token_address):
-    headers = {
-        "Accept": "application/json",
-        "X-API-Key": MORALIS_API
-    }
-    url = f"https://solana-gateway.moralis.io/token/mainnet/{token_address}/metadata"
-    response = requests.request("GET", url, headers=headers)
-    print(response.status_code)
-    print(response.json())
-    
-    if response.status_code != 200:
-        return '', ''
-    
-    response = response.json()
-    name = response.get('name', '')
-    symbol = response.get('symbol', '')
+    try:
+        headers = {
+            "Accept": "application/json",
+            "X-API-Key": MORALIS_API
+        }
+        url = f"https://solana-gateway.moralis.io/token/mainnet/{token_address}/metadata"
+        response = requests.request("GET", url, headers=headers)
+        print(response.status_code)
+        print(response.json())
+        
+        if response.status_code != 200:
+            return '', ''
+        
+        response = response.json()
+        name = response.get('name', '')
+        symbol = response.get('symbol', '')
 
-    print(name, symbol)
+        print(name, symbol)
 
-    return name, symbol
+        return name, symbol
+    except Exception as e:
+        send_exception_to_discord(e)
+    return "", ""
 
 # Coroutine to process each wallet
 async def my_coroutine():
