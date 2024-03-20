@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 webhook_url = os.getenv("WEBHOOK_URL")
+results_webhook_url = os.getenv("RESULTS_WEBHOOK_URL")
 MORALIS_API = os.getenv("MORALIS_API")
 MONGO_SESSION = os.getenv("MONGO_SESSION")
 
@@ -18,9 +19,10 @@ MONGO_SESSION = os.getenv("MONGO_SESSION")
 mongo_client = pymongo.MongoClient(MONGO_SESSION)
 db = mongo_client["tokenchange_alerts"]
 wallets_collection = db["wallets"]
+alerted_coins = db["alerted_coins"]
 
 # Function to send messages to Discord
-def send_message_to_discord(message):
+def send_message_to_discord(message, webhook_url=webhook_url):
     data = {
         "embeds": [{
             "description": message,
@@ -47,11 +49,12 @@ def send_exception_to_discord(exception):
     response = requests.post(webhook_url, json=data)
     if response.status_code != 204:
         print(f"Request to Discord webhook failed with status code {response.status_code}")
+        print(response.json())
 
 # Function to get transfers for a specific wallet hash
 def get_transfers(wallet):
     time_now = int(time.time())
-    time_ago = int(time_now - 80)
+    time_ago = int(time_now - 100)
     current_page = 1
     results = []
 
@@ -84,40 +87,35 @@ def get_transfers(wallet):
 
     return results[::-1]
 
-# Function to process transfers
-def process_transfers(result: list, wallet):
-    try:
-        wallet_hash = wallet['hash']
-        wallet_name = wallet['name']
-        print(f"Processing transfers for wallet {wallet_name}...")
-        # send_message_to_discord(f"Processing transfers for wallet {wallet_name}...")
+def process_transfers(results, wallet):
+    wallet_hash = wallet['hash']
+    wallet_name = wallet.get('name', wallet_hash)
+    message = ""
+    
+    for elem in results:
+        txn_hash = elem['transactionHash']
+        for data in elem.get('data', []):
+            if data['action'] == "transferChecked" and data['token']:
+                token_address = data['token']
 
-        message = ""
+                # Check if this token for the wallet has been alerted
+                if alerted_coins.find_one({"wallet_hash": wallet_hash, "token_address": token_address}):
+                    continue  # Skip this token
 
-        for elem in result:
-            txnHash = elem['transactionHash']
-            datas = elem['data']
-            added = False
-            for data in datas:
-                action = data['action']
-                token = data['token']
+                name, symbol = get_name_symbol(token_address)
+                if not name or not symbol:
+                    continue
 
-                if token and action == "transferChecked":
-                    name, symbol = get_name_symbol(token)
-                    if not name or not symbol:
-                        continue
-                    message += f"**Transaction: **`{txnHash}` - `{name}` - `{symbol}`\n"           
+                # Update the message and the alerted_coins collection
+                message += f"[{token_address}](https://solscan.io/account/{token_address}) `{symbol}`\n"
+                alerted_coins.insert_one({"wallet_hash": wallet_hash, "token_address": token_address})
 
-        if not message:
-            print("No new transactions found")
-            return
-            # send_message_to_discord(f"No new transactions found for wallet [{wallet_name}](https://solscan.io/account/{wallet_hash})")
-        message = f"New transactions found for wallet [{wallet_name}](https://solscan.io/account/{wallet_hash}):\n" + message
-        send_message_to_discord(message)
-
-    except Exception as e:
-        print(f"Error on process txns: {e}")
-        send_exception_to_discord(e)
+    if message:
+        message = f"New transactions for wallet [{wallet_name}](https://birdeye.so/profile/{wallet_hash}):\n-------------------------------------------\n" + message
+        send_message_to_discord(message, webhook_url)
+        send_message_to_discord(message, results_webhook_url)
+    else:
+        print("No new transactions to alert for", wallet_name)
 
 def get_name_symbol(token_address):
     try:
@@ -147,6 +145,7 @@ def get_name_symbol(token_address):
 # Coroutine to process each wallet
 async def my_coroutine():
     wallets = list(wallets_collection.find())
+    print(wallets)
     for wallet in wallets:
         wallet_hash = wallet['hash']
         wallet_name = wallet['name']
@@ -156,13 +155,13 @@ async def my_coroutine():
             continue  # Proceed to the next wallet hash
 
         process_transfers(results, wallet)
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(1)
 
 # Coroutine to schedule the execution
 async def schedule_coroutine():
     try:
         while True:
-            # send_message_to_discord("Processing new one")
+            send_message_to_discord("Processing new one")
             await my_coroutine()
             await asyncio.sleep(60)
     except Exception as e:
