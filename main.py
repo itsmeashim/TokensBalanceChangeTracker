@@ -133,7 +133,7 @@ def process_transfers(txnHash, wallet):
     print(f"Tokens: {tokens}")
 
     if not tokens:
-        send_message_to_discord(f"No tokens found for wallet {wallet_name}")
+        # send_message_to_discord(f"No tokens found for wallet {wallet_name}")
         return
 
     send_message_to_discord(f"Tokens: {tokens} for wallet {wallet_name}")
@@ -207,7 +207,7 @@ async def my_coroutine():
 async def schedule_coroutine():
     try:
         while True:
-            send_message_to_discord("Processing new one")
+            # send_message_to_discord("Processing new one")
             await my_coroutine()
             await asyncio.sleep(30)
     except Exception as e:
