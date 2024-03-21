@@ -36,6 +36,7 @@ def send_message_to_discord(message, webhook_url=webhook_url):
     response = requests.post(webhook_url, json=data)
     if response.status_code != 204:
         print(f"Request to Discord webhook failed with status code {response.status_code}")
+        print(response.json())
 
 # Function to send exceptions to Discord
 def send_exception_to_discord(exception):
@@ -130,10 +131,12 @@ def process_transfers(txnHash, wallet):
 
     tokens = get_Hash_Token(txn_hash)
     print(f"Tokens: {tokens}")
-    send_message_to_discord(f"Tokens: {tokens}")
 
     if not tokens:
+        send_message_to_discord(f"No tokens found for wallet {wallet_name}")
         return
+
+    send_message_to_discord(f"Tokens: {tokens} for wallet {wallet_name}")
 
     message = ""
     for token in tokens:
@@ -146,6 +149,7 @@ def process_transfers(txnHash, wallet):
 
         name, symbol = get_name_symbol(token_address)
         if not name or not symbol:
+            send_message_to_discord(f"Name or symbol not found for token {token_address} in wallet {wallet_name}")
             continue
 
         # Update the message and the alerted_coins collection
