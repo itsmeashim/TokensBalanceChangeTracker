@@ -7,6 +7,9 @@ import json
 import pymongo
 import requests
 from dotenv import load_dotenv
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 
@@ -14,12 +17,13 @@ webhook_url = os.getenv("WEBHOOK_URL")
 results_webhook_url = os.getenv("RESULTS_WEBHOOK_URL")
 MORALIS_API = os.getenv("MORALIS_API")
 MONGO_SESSION = os.getenv("MONGO_SESSION")
+SOL_API = os.getenv("SOL_API")
 
 # MongoDB setup
 mongo_client = pymongo.MongoClient(MONGO_SESSION)
 db = mongo_client["tokenchange_alerts"]
 wallets_collection = db["wallets"]
-alerted_coins = db["alerted_coins"]
+alerted_coins = db["alerted_coins5"]
 
 # Function to send messages to Discord
 def send_message_to_discord(message, webhook_url=webhook_url):
@@ -51,54 +55,100 @@ def send_exception_to_discord(exception):
         print(f"Request to Discord webhook failed with status code {response.status_code}")
         print(response.json())
 
-# Function to get transfers for a specific wallet hash
-def get_transfers(wallet):
-    time_now = int(time.time())
-    time_ago = int(time_now - 800)
-    current_page = 1
-    results = []
+def get_last_transaction(address):
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getSignaturesForAddress",
+        "params": [address, {"limit": 1}]
+    }
 
-    wallet_hash = wallet['hash']
-    
-    url = f"https://api.solana.fm/v0/accounts/{wallet_hash}/transfers?utcFrom={str(time_ago)}&utcTo={str(time_now)}&page={str(current_page)}"
-    print(url)
     try:
-        response = requests.get(url).json()
+        response = requests.post(SOL_API, headers=headers, data=json.dumps(data)).json()
+        print(response)
     except Exception as e:
-        print(f"Error: {e}")
+        print("Error in getting transaction ", e)
+        return ""
+
+    result = response.get("result", [])
+    if not result:
+        return ""
+
+    txnHash = result[0].get("signature", "")
+
+    return txnHash
+
+def find_values(json_input, key):
+    if isinstance(json_input, dict):
+        for k, v in json_input.items():
+            if k == key:
+                yield v
+            elif isinstance(v, (dict, list)):
+                yield from find_values(v, key)
+    elif isinstance(json_input, list):
+        for item in json_input:
+            yield from find_values(item, key)
+
+def get_Hash_Token(contract):
+    tokens = set()
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getTransaction",
+        "params": [
+            contract,
+            {
+                "encoding": "jsonParsed",
+                "maxSupportedTransactionVersion": 0
+            }
+        ]
+    }
+
+    try:
+        response = requests.post(SOL_API, headers=headers, data=json.dumps(data)).json()
+    except Exception as e:
+        print("Error in getting transaction ", e)
         send_exception_to_discord(e)
-        return -1
+        return ""
     
-    if 'results' in response:
-        current_result = response["results"]
-        results += current_result
+    results = find_values(response, "mint")
 
-    return results
-
-def process_transfers(results, wallet):
+    for result in results:
+        if not result == "So11111111111111111111111111111111111111112":
+            tokens.add(result)
+            
+    return tokens
+    
+def process_transfers(txnHash, wallet):
     wallet_hash = wallet['hash']
     wallet_name = wallet.get('name', wallet_hash)
+    txn_hash = txnHash
+
+    print(f"Processing transactions for wallet {wallet_name} with hash {wallet_hash} and txn hash {txn_hash}")
+
+    tokens = get_Hash_Token(txn_hash)
+    print(f"Tokens: {tokens}")
+
+    if not tokens:
+        return
+
     message = ""
-    txn_hash = ""
-    
-    for elem in results:
-        txn_hash = elem['transactionHash']
-        message = ""
-        for data in elem.get('data', []):
-            if data.get('token', ""):
-                token_address = data['token']
+    for token in tokens:
+        token_address = token
 
-                # Check if this token for the wallet has been alerted
-                if alerted_coins.find_one({"wallet_hash": wallet_hash, "token_address": token_address}):
-                    continue  # Skip this token
+        # Check if this token for the wallet has been alerted
+        if alerted_coins.find_one({"wallet_hash": wallet_hash, "token_address": token_address}):
+            continue  # Skip this token
 
-                name, symbol = get_name_symbol(token_address)
-                if not name or not symbol:
-                    continue
+        name, symbol = get_name_symbol(token_address)
+        if not name or not symbol:
+            continue
 
-                # Update the message and the alerted_coins collection
-                message += f"[{token_address}](https://solscan.io/account/{token_address}) `{symbol}`\n"
-                alerted_coins.insert_one({"wallet_hash": wallet_hash, "token_address": token_address})
+        # Update the message and the alerted_coins collection
+        message += f"[{token_address}](https://solscan.io/account/{token_address}) `{symbol}`\n"
+        alerted_coins.insert_one({"wallet_hash": wallet_hash, "token_address": token_address})
 
         if message:
             message = f"New transactions for wallet [{wallet_name}](https://birdeye.so/profile/{wallet_hash}):\n-------------------------------------------\n" + message
@@ -116,8 +166,6 @@ def get_name_symbol(token_address):
         }
         url = f"https://solana-gateway.moralis.io/token/mainnet/{token_address}/metadata"
         response = requests.request("GET", url, headers=headers)
-        print(response.status_code)
-        print(response.json())
         
         if response.status_code != 200:
             return '', ''
@@ -140,13 +188,13 @@ async def my_coroutine():
     for wallet in wallets:
         wallet_hash = wallet['hash']
         wallet_name = wallet['name']
-        results = get_transfers(wallet)
-        if results == -1:
+        txnHash = get_last_transaction(wallet_hash)
+        if txnHash == -1:
             print(f"Error on Request for wallet {wallet_name}")
             continue  # Proceed to the next wallet hash
 
-        process_transfers(results, wallet)
-        await asyncio.sleep(1)
+        process_transfers(txnHash, wallet)
+        await asyncio.sleep(0.1)
 
 # Coroutine to schedule the execution
 async def schedule_coroutine():
@@ -154,7 +202,7 @@ async def schedule_coroutine():
         while True:
             send_message_to_discord("Processing new one")
             await my_coroutine()
-            await asyncio.sleep(60)
+            await asyncio.sleep(30)
     except Exception as e:
         print(f"Error: {e}")
         send_exception_to_discord(e)
