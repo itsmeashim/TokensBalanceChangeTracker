@@ -130,6 +130,7 @@ def process_transfers(txnHash, wallet):
 
     tokens = get_Hash_Token(txn_hash)
     print(f"Tokens: {tokens}")
+    send_message_to_discord(f"Tokens: {tokens}")
 
     if not tokens:
         return
@@ -140,6 +141,7 @@ def process_transfers(txnHash, wallet):
 
         # Check if this token for the wallet has been alerted
         if alerted_coins.find_one({"wallet_hash": wallet_hash, "token_address": token_address}):
+            send_message_to_discord(f"Token {token_address} already alerted for wallet {wallet_name}")
             continue  # Skip this token
 
         name, symbol = get_name_symbol(token_address)
