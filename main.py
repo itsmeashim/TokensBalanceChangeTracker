@@ -201,7 +201,7 @@ async def my_coroutine():
             continue  # Proceed to the next wallet hash
 
         process_transfers(txnHash, wallet)
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1)
 
 # Coroutine to schedule the execution
 async def schedule_coroutine():
