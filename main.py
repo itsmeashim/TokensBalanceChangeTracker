@@ -23,7 +23,7 @@ SOL_API = os.getenv("SOL_API")
 mongo_client = pymongo.MongoClient(MONGO_SESSION)
 db = mongo_client["tokenchange_alerts"]
 wallets_collection = db["wallets"]
-alerted_coins = db["alerted_coins5"]
+alerted_coins = db["alerted_coins"]
 
 # Function to send messages to Discord
 def send_message_to_discord(message, webhook_url=webhook_url):
@@ -175,6 +175,7 @@ def get_name_symbol(token_address):
         symbol = response.get('symbol', '')
 
         print(name, symbol)
+        print(response)
 
         return name, symbol
     except Exception as e:
