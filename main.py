@@ -54,48 +54,38 @@ def send_exception_to_discord(exception):
 # Function to get transfers for a specific wallet hash
 def get_transfers(wallet):
     time_now = int(time.time())
-    time_ago = int(time_now - 100)
+    time_ago = int(time_now - 800)
     current_page = 1
     results = []
 
     wallet_hash = wallet['hash']
-    while True:
-        url = f"https://api.solana.fm/v0/accounts/{wallet_hash}/transfers?utcFrom={str(time_ago)}&utcTo={str(time_now)}&page={str(current_page)}"
-        print(url)
-        try:
-            response = requests.get(url).json()
-        except Exception as e:
-            print(f"Error: {e}")
-            send_exception_to_discord(e)
-            return -1
-        
-        try:
-            total_page = 1
-            if 'pagination' in response and 'totalPages' in response["pagination"]:
-                total_page = response["pagination"]["totalPages"] if response["pagination"]["totalPages"] else 1
-                print(total_page)
-        except Exception as e:
-            print(f"Error: {e}")
-            send_exception_to_discord(e)
-            total_page = 1
-        if 'results' in response:
-            current_result = response["results"]
-            results += current_result
-        current_page += 1
-        if current_page > total_page:
-            break
+    
+    url = f"https://api.solana.fm/v0/accounts/{wallet_hash}/transfers?utcFrom={str(time_ago)}&utcTo={str(time_now)}&page={str(current_page)}"
+    print(url)
+    try:
+        response = requests.get(url).json()
+    except Exception as e:
+        print(f"Error: {e}")
+        send_exception_to_discord(e)
+        return -1
+    
+    if 'results' in response:
+        current_result = response["results"]
+        results += current_result
 
-    return results[::-1]
+    return results
 
 def process_transfers(results, wallet):
     wallet_hash = wallet['hash']
     wallet_name = wallet.get('name', wallet_hash)
     message = ""
+    txn_hash = ""
     
     for elem in results:
         txn_hash = elem['transactionHash']
+        message = ""
         for data in elem.get('data', []):
-            if data['action'] == "transferChecked" and data['token']:
+            if data.get('token', ""):
                 token_address = data['token']
 
                 # Check if this token for the wallet has been alerted
@@ -110,11 +100,12 @@ def process_transfers(results, wallet):
                 message += f"[{token_address}](https://solscan.io/account/{token_address}) `{symbol}`\n"
                 alerted_coins.insert_one({"wallet_hash": wallet_hash, "token_address": token_address})
 
-    if message:
-        message = f"New transactions for wallet [{wallet_name}](https://birdeye.so/profile/{wallet_hash}):\n-------------------------------------------\n" + message
-        send_message_to_discord(message, webhook_url)
-        send_message_to_discord(message, results_webhook_url)
-    else:
+        if message:
+            message = f"New transactions for wallet [{wallet_name}](https://birdeye.so/profile/{wallet_hash}):\n-------------------------------------------\n" + message
+            send_message_to_discord(message  + f"Hash: {txn_hash}", webhook_url)
+            send_message_to_discord(message, results_webhook_url)
+
+    if not message:
         print("No new transactions to alert for", wallet_name)
 
 def get_name_symbol(token_address):
