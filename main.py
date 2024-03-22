@@ -27,34 +27,38 @@ alerted_coins = db["alerted_coins"]
 
 # Function to send messages to Discord
 def send_message_to_discord(message, webhook_url=webhook_url):
-    data = {
-        "embeds": [{
-            "description": message,
-            "color": 0x3498DB  # Blue color for informational message
-        }]
-    }
-    response = requests.post(webhook_url, json=data)
-    if response.status_code != 204:
-        print(f"Request to Discord webhook failed with status code {response.status_code}")
-        print(response.json())
+    try:
+        data = {
+            "embeds": [{
+                "description": message,
+                "color": 0x3498DB  # Blue color for informational message
+            }]
+        }
+        response = requests.post(webhook_url, json=data)
+        if response.status_code != 204:
+            print(f"Request to Discord webhook failed with status code {response.status_code}")
+    except:
+        print("Error in sending message to Discord")
 
 # Function to send exceptions to Discord
 def send_exception_to_discord(exception):
-    if not isinstance(exception, Exception):
-        print("Parameter must be an Exception.")
-        return
-    exception_message = "".join(format_exception(type(exception), exception, exception.__traceback__))
-    data = {
-        "embeds": [{
-            "title": "Exception Occurred",
-            "description": f"```{exception_message}```",
-            "color": 0xFF0000  # Red color for error
-        }]
-    }
-    response = requests.post(webhook_url, json=data)
-    if response.status_code != 204:
-        print(f"Request to Discord webhook failed with status code {response.status_code}")
-        print(response.json())
+    try:
+        if not isinstance(exception, Exception):
+            print("Parameter must be an Exception.")
+            return
+        exception_message = "".join(format_exception(type(exception), exception, exception.__traceback__))
+        data = {
+            "embeds": [{
+                "title": "Exception Occurred",
+                "description": f"```{exception_message}```",
+                "color": 0xFF0000  # Red color for error
+            }]
+        }
+        response = requests.post(webhook_url, json=data)
+        if response.status_code != 204:
+            print(f"Request to Discord webhook failed with status code {response.status_code}")
+    except:
+        print("Error in sending exception to Discord")
 
 def get_last_transaction(address):
     headers = {"Content-Type": "application/json"}
@@ -123,46 +127,50 @@ def get_Hash_Token(contract):
     return tokens
     
 def process_transfers(txnHash, wallet):
-    wallet_hash = wallet['hash']
-    wallet_name = wallet.get('name', wallet_hash)
-    txn_hash = txnHash
+    try:
+        wallet_hash = wallet['hash']
+        wallet_name = wallet.get('name', wallet_hash)
+        txn_hash = txnHash
 
-    print(f"Processing transactions for wallet {wallet_name} with hash {wallet_hash} and txn hash {txn_hash}")
+        print(f"Processing transactions for wallet {wallet_name} with hash {wallet_hash} and txn hash {txn_hash}")
 
-    tokens = get_Hash_Token(txn_hash)
-    print(f"Tokens: {tokens}")
+        tokens = get_Hash_Token(txn_hash)
+        print(f"Tokens: {tokens}")
 
-    if not tokens:
-        # send_message_to_discord(f"No tokens found for wallet {wallet_name}")
-        return
+        if not tokens:
+            # send_message_to_discord(f"No tokens found for wallet {wallet_name}")
+            return
 
-    send_message_to_discord(f"Tokens: {tokens} for wallet {wallet_name}")
+        send_message_to_discord(f"Tokens: {tokens} for wallet {wallet_name}")
 
-    message = ""
-    for token in tokens:
-        token_address = token
+        message = ""
+        for token in tokens:
+            token_address = token
 
-        # Check if this token for the wallet has been alerted
-        if alerted_coins.find_one({"wallet_hash": wallet_hash, "token_address": token_address}):
-            send_message_to_discord(f"Token {token_address} already alerted for wallet {wallet_name}")
-            continue  # Skip this token
+            # Check if this token for the wallet has been alerted
+            if alerted_coins.find_one({"wallet_hash": wallet_hash, "token_address": token_address}):
+                send_message_to_discord(f"Token {token_address} already alerted for wallet {wallet_name}")
+                continue  # Skip this token
 
-        name, symbol = get_name_symbol(token_address)
-        if not name or not symbol:
-            send_message_to_discord(f"Name or symbol not found for token {token_address} in wallet {wallet_name}")
-            continue
+            name, symbol = get_name_symbol(token_address)
+            if not name or not symbol:
+                send_message_to_discord(f"Name or symbol not found for token {token_address} in wallet {wallet_name}")
+                continue
 
-        # Update the message and the alerted_coins collection
-        message += f"[{token_address}](https://solscan.io/account/{token_address}) `{symbol}`\n"
-        alerted_coins.insert_one({"wallet_hash": wallet_hash, "token_address": token_address})
+            # Update the message and the alerted_coins collection
+            message += f"[{token_address}](https://solscan.io/account/{token_address}) `{symbol}`\n"
+            alerted_coins.insert_one({"wallet_hash": wallet_hash, "token_address": token_address})
 
-        if message:
-            message = f"New transactions for wallet [{wallet_name}](https://birdeye.so/profile/{wallet_hash}):\n-------------------------------------------\n" + message
-            send_message_to_discord(message  + f"Hash: {txn_hash}", webhook_url)
-            send_message_to_discord(message, results_webhook_url)
+            if message:
+                message = f"New transactions for wallet [{wallet_name}](https://birdeye.so/profile/{wallet_hash}):\n-------------------------------------------\n" + message
+                send_message_to_discord(message  + f"Hash: {txn_hash}", webhook_url)
+                send_message_to_discord(message, results_webhook_url)
 
-    if not message:
-        print("No new transactions to alert for", wallet_name)
+        if not message:
+            print("No new transactions to alert for", wallet_name)
+    except Exception as e:
+        send_exception_to_discord(e)
+        print(f"Error: {e}")
 
 def get_name_symbol(token_address):
     try:
@@ -190,18 +198,22 @@ def get_name_symbol(token_address):
 
 # Coroutine to process each wallet
 async def my_coroutine():
-    wallets = list(wallets_collection.find())
-    print(wallets)
-    for wallet in wallets:
-        wallet_hash = wallet['hash']
-        wallet_name = wallet['name']
-        txnHash = get_last_transaction(wallet_hash)
-        if txnHash == -1:
-            print(f"Error on Request for wallet {wallet_name}")
-            continue  # Proceed to the next wallet hash
+    try:
+        wallets = list(wallets_collection.find())
+        print(wallets)
+        for wallet in wallets:
+            wallet_hash = wallet['hash']
+            wallet_name = wallet['name']
+            txnHash = get_last_transaction(wallet_hash)
+            if txnHash == -1:
+                print(f"Error on Request for wallet {wallet_name}")
+                continue  # Proceed to the next wallet hash
 
-        process_transfers(txnHash, wallet)
-        await asyncio.sleep(1)
+            process_transfers(txnHash, wallet)
+            await asyncio.sleep(1)
+    except Exception as e:
+        send_exception_to_discord(e)
+        print(f"Error: {e}")
 
 # Coroutine to schedule the execution
 async def schedule_coroutine():
