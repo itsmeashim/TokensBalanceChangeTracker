@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 import os
 from dotenv import load_dotenv
+import io
 
 load_dotenv()
 
@@ -75,7 +76,16 @@ async def list_wallets(ctx):
         response += f"{wallet['name']} ({wallet['hash']})\n"
     if not wallets.retrieved:
         response = "No wallets found."
-    await ctx.send(response)
+
+    max_length = 2000  # Discord's max message length
+    if len(response) <= max_length:
+        await ctx.send(response)
+    else:
+        # If the message is too long, send it as a file
+        message_bytes = response.encode('utf-8')  # Encoding to bytes
+        message_file = io.BytesIO(message_bytes)  # Creating a BytesIO object from the bytes
+        message_file.seek(0)  # Seek to the start of the file
+        await ctx.send(file=discord.File(fp=message_file, filename="words_and_descriptions_list.txt"))
 
 # Enter your bot's token here
 bot.run(DISCORD_BOT_TOKEN)
