@@ -74,7 +74,7 @@ async def get_last_transaction(address):
         "method": "getSignaturesForAddress",
         "params": [address, {"limit": 1}]
     }
-
+    response_json = ""
     await request_semaphore.acquire()
     try:
         async with aiohttp.ClientSession() as session:
@@ -84,7 +84,7 @@ async def get_last_transaction(address):
                 return response_json.get("result", [])[0].get("signature", "")
     except Exception as e:
         logger.error(f"Error in getting transaction: {e}")
-        await send_exception_to_discord(e)
+        await send_message_to_discord(f"{address}\nResponse: {response_json if response_json else ''}\nError: {e}", webhook_url)
         return ""
     finally:
         request_semaphore.release()
