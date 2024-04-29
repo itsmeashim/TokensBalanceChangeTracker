@@ -10,7 +10,7 @@ import time
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-request_semaphore = asyncio.Semaphore(10)
+request_semaphore = asyncio.Semaphore(5)
 
 load_dotenv(override=True)
 
@@ -81,7 +81,12 @@ async def get_last_transaction(address):
             async with session.post(SOL_API, headers=headers, json=data) as response:
                 response_json = await response.json()
                 # logger.info(response_json)
-                return response_json.get("result", [])[0].get("signature", "")
+                result = response_json.get("result", [])
+                if not result:
+                    return ""
+
+                txnHash = result[0].get("signature", "")
+                return txnHash
     except Exception as e:
         logger.error(f"Error in getting transaction: {e}")
         await send_message_to_discord(f"{address}\nResponse: {response_json if response_json else ''}\nError: {e}", webhook_url)
