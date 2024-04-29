@@ -63,6 +63,7 @@ async def send_exception_to_discord(exception):
                 if response.status != 204:
                     logger.error(f"Request to Discord webhook failed with status code {response.status}")
     except Exception as e:
+        await send_exception_to_discord(e)
         logger.error(f"Error in sending exception to Discord: {e}")
 
 async def get_last_transaction(address):
@@ -83,6 +84,7 @@ async def get_last_transaction(address):
                 return response_json.get("result", [])[0].get("signature", "")
     except Exception as e:
         logger.error(f"Error in getting transaction: {e}")
+        await send_exception_to_discord(e)
         return ""
     finally:
         request_semaphore.release()
