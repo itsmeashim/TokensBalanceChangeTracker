@@ -10,7 +10,7 @@ import time
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-request_semaphore = asyncio.Semaphore(5)
+request_semaphore = asyncio.Semaphore(10)
 
 load_dotenv(override=True)
 
